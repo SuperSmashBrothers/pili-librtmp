@@ -8,16 +8,19 @@
 #
 
 Pod::Spec.new do |s|
-  s.name             = "pili-librtmp"
-  s.version          = "1.0.7"
+  s.name             = "pili-librtmp-swift"
+  s.version          = "0.0.1"
   s.summary          = "pili-librtmp is a RTMP client library."
-  s.homepage         = "https://github.com/pili-engineering/pili-librtmp"
+  s.homepage         = "https://github.com/SuperSmashBrothers/pili-librtmp"
   s.license          = 'LGPL'
-  s.author           = { "pili" => "pili@qiniu.com" }
-  s.source           = { :git => "https://github.com/pili-engineering/pili-librtmp.git", :tag => "v#{s.version}" }
+  s.author           = { "pili" => "jzh16s@hotmail.com" }
+  s.source           = { :path => "/Users/jiangzhenhua/pili-librtmp" }
 
-  s.platform     = :ios, '7.0'
+  s.platform     = :ios, '8.0'
   s.requires_arc = true
-  s.source_files = "Pod/Classes/pili-librtmp/*.{h,c}"
+  s.source_files = "Pod/Classes/**/*.{h,c,swift}"
   s.exclude_files = "Pod/Classes/pili-librtmp/dh.h", "Pod/Classes/pili-librtmp/handshake.h"
+  s.preserve_paths = "pili-librtmp-swift/module.module.map"
+  s.module_map = "pili-librtmp-swift/module.modulemap"
+  
 end

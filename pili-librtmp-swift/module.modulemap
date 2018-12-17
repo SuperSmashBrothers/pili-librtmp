@@ -1,0 +1,4 @@
+framework module pili_librtmp_swift {
+    umbrella header "pili_librtmp_swift.h"
+    header "rtmp.h"
+}
