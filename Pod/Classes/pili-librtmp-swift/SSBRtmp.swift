@@ -31,19 +31,6 @@ import Foundation
         return RTMP_MAX_HEADER_SIZE
     }
     
-    @objc public enum PacketSize: Int32 {
-        case unknown = -1, large, medium, small, minimum
-        public init(rawValue: Int32) {
-            switch rawValue {
-            case RTMP_PACKET_SIZE_LARGE: self = .large
-            case RTMP_PACKET_SIZE_LARGE: self = .medium
-            case RTMP_PACKET_SIZE_SMALL: self = .small
-            case RTMP_PACKET_SIZE_MINIMUM: self = .minimum
-            default: self = .unknown
-            }
-        }
-    }
-    
     public struct Feature: OptionSet {
         public let rawValue: Int32
         public static let http = Feature(rawValue: RTMP_FEATURE_HTTP)
@@ -74,7 +61,7 @@ import Foundation
         }
     }
     
-    public enum Error: CustomNSError {
+    enum Error: CustomNSError {
         case unknown(String?)
         case unknownOption(String?)
         /// Failed to access the DNS
@@ -153,7 +140,11 @@ import Foundation
             }
         }
         
-        public init(error: RTMPError) {
+        public var rawError: RTMPError {
+            return RTMPError(code: Int32(errorCode), message: localizedDescription.UTF8CString)
+        }
+        
+        public init?(error: RTMPError) {
             let code: Int = Int(error.code)
             let messsage = String(cString: error.message)
             switch code {
@@ -178,25 +169,279 @@ import Foundation
             case PILI_RTMPErrorTLSConnectFailed: self = .tlsConnectFailed(messsage)
             case PILI_RTMPErrorNoSSLOrTLSSupport: self = .tlsConnectFailed(messsage)
             case PILI_RTMPErrorNoSSLOrTLSSupport: self = .noSSLOrTLSSupport(messsage)
-            default: self = .unknown(messsage)
+            default: return nil
             }
         }
     }
     
-    private var rtmp = PILI_RTMP_Alloc()
+    public class AMFObject: NSObject {
+        
+    }
     
-    public init(port: Int) {
+    @objc public class Packet: NSObject {
+        var packet: UnsafeMutablePointer<PILI_RTMPPacket>?
+        
+        public var isReady: Bool {
+            return packet?.pointee.m_nBytesRead == packet?.pointee.m_nBodySize
+        }
+        
+        @objc public enum HeaderType: Int32 {
+            case unknown = -1, large, medium, small, minimum
+            public init(rawValue: Int32) {
+                switch rawValue {
+                case RTMP_PACKET_SIZE_LARGE: self = .large
+                case RTMP_PACKET_SIZE_LARGE: self = .medium
+                case RTMP_PACKET_SIZE_SMALL: self = .small
+                case RTMP_PACKET_SIZE_MINIMUM: self = .minimum
+                default: self = .unknown
+                }
+            }
+        }
+        
+        @objc public var headerType: HeaderType {
+            set(newValue) {
+                packet?.pointee.m_headerType = UInt8(newValue.rawValue)
+            }
+            get {
+                guard let p = packet?.pointee else {
+                    return .unknown
+                }
+                return HeaderType(rawValue: Int32(p.m_headerType))
+            }
+        }
+        
+        @objc public enum PacketType: Int32 {
+            case audio = 0x08, video
+            case info = 0x12
+            case unknown = -1
+            
+            public init(rawValue: Int32) {
+                switch rawValue {
+                case RTMP_PACKET_TYPE_AUDIO: self = .audio
+                case RTMP_PACKET_TYPE_VIDEO: self = .video
+                case RTMP_PACKET_TYPE_INFO: self = .info
+                default: self = .unknown
+                }
+            }
+        }
+        
+        @objc public var type: PacketType {
+            set(newValue) {
+                packet?.pointee.m_packetType = UInt8(type.rawValue)
+            }
+            get {
+                guard let p = packet?.pointee else {
+                    return .unknown
+                }
+                return PacketType(rawValue: Int32(p.m_packetType))
+            }
+        }
+        
+        @objc public var data: Data? {
+            set(newValue) {
+                guard let d = newValue else {
+                    packet?.pointee.m_body = nil
+                    packet?.pointee.m_nBodySize = 0
+                    return
+                }
+                let size = d.count
+                packet?.pointee.m_nBodySize = UInt32(size)
+                memcpy(packet?.pointee.m_body, d.withUnsafeBytes { UnsafeRawPointer($0) } , size)
+            }
+            get {
+                guard let ptr = packet?.pointee else {
+                    return nil
+                }
+                return Data(bytes: ptr.m_body, count: Int(ptr.m_nBodySize))
+            }
+        }
+        
+        @objc public var timeStamp: Int {
+            set(newValue) {
+                packet?.pointee.m_nTimeStamp = UInt32(newValue)
+            }
+            get {
+                return Int(packet?.pointee.m_nTimeStamp ?? 0)
+            }
+        }
+        
+        @objc public var useExtTimestamp: Bool {
+            set(newValue) {
+                packet?.pointee.m_useExtTimestamp = newValue ? 1 : 0
+            }
+            get {
+                return packet?.pointee.m_useExtTimestamp == 1
+            }
+        }
+        
+        /// timestamp absolute or relative
+        @objc public var hasAbsTimestamp: Bool {
+            set(newValue) {
+                packet?.pointee.m_hasAbsTimestamp = newValue ? 1 : 0
+            }
+            get {
+                return packet?.pointee.m_hasAbsTimestamp == 1
+            }
+        }
+        
+        @objc public var size: Int {
+            return Int(packet?.pointee.m_nBodySize ?? 0)
+        }
+        
+        @objc public override init() {
+            super.init()
+            PILI_RTMPPacket_Reset(packet)
+            PILI_RTMPPacket_Alloc(packet, Int32(size))
+        }
+        
+        @objc public func reset() {
+            PILI_RTMPPacket_Reset(packet)
+        }
+        
+        @objc public func dump() {
+            PILI_RTMPPacket_Dump(packet)
+        }
+        
+        deinit {
+            PILI_RTMPPacket_Free(packet)
+        }
+    }
+    
+    var rtmp = PILI_RTMP_Alloc()
+    
+    @objc public var isConnected: Bool {
+        return PILI_RTMP_IsConnected(rtmp) == 1
+    }
+    
+    @objc public var isTimeout: Bool {
+        return PILI_RTMP_IsTimedout(rtmp) == 1
+    }
+    
+    @objc public var url: String? {
+        didSet {
+            if let url = self.url?.UTF8CString,
+                PILI_RTMP_SetupURL(rtmp, url, nil) > 0 {
+                self.url = nil
+            }
+        }
+    }
+    
+    public override init() {
         super.init()
         // 调用初始化方法
         PILI_RTMP_Init(rtmp)
-    
     }
     
-    func close() {
-//        PILI_RTMP_Close(<#T##r: UnsafeMutablePointer<PILI_RTMP>!##UnsafeMutablePointer<PILI_RTMP>!#>, <#T##error: UnsafeMutablePointer<RTMPError>!##UnsafeMutablePointer<RTMPError>!#>)
+    @objc public func close() throws {
+        guard let rtmp = self.rtmp else {
+            return
+        }
+        var err = RTMPError()
+        defer {
+            PILI_RTMPError_Free(&err)
+        }
+        PILI_RTMP_Close(rtmp, &err)
+        if let error = Error(error: err) {
+            throw error
+        }
+    }
+    
+    @objc public func connect(packet: Packet? = nil) throws {
+        var err = RTMPError()
+        defer {
+            PILI_RTMPError_Free(&err)
+        }
+        guard PILI_RTMP_Connect(rtmp, packet?.packet, &err) > 0 else {
+            if let e = Error(error: err) {
+                throw e
+            }
+            return
+        }
+    }
+    
+    @objc public func pause(doPause: Bool) throws {
+        var err = RTMPError()
+        defer {
+            PILI_RTMPError_Free(&err)
+        }
+        guard PILI_RTMP_Pause(rtmp, doPause ? 1 : 0, &err) > 0 else {
+            if let e = Error(error: err) {
+                throw e
+            }
+            return
+        }
+    }
+    
+    @objc public func connectStream(seekTime: Int) throws {
+        var err = RTMPError()
+        defer {
+            PILI_RTMPError_Free(&err)
+        }
+        guard PILI_RTMP_ConnectStream(rtmp, Int32(seekTime), &err) > 0 else {
+            if let e = Error(error: err) {
+                throw e
+            }
+            return
+        }
+    }
+    
+    @objc public func reconnectStream(seekTime: Int) throws {
+        var err = RTMPError()
+        defer {
+            PILI_RTMPError_Free(&err)
+        }
+        guard PILI_RTMP_ReconnectStream(rtmp, Int32(seekTime), &err) > 0 else {
+            if let e = Error(error: err) {
+                throw e
+            }
+            return
+        }
+    }
+    
+    @objc public func deleteStream() throws {
+        var err = RTMPError()
+        defer {
+            PILI_RTMPError_Free(&err)
+        }
+        PILI_RTMP_DeleteStream(rtmp, &err)
+        if let e = Error(error: err) {
+            throw e
+        }
+    }
+    
+    @discardableResult
+    @objc public func read(packet: Packet) -> Int32 {
+        return Int32(PILI_RTMP_ReadPacket(rtmp, packet.packet))
+    }
+    
+    @objc public func serve() throws {
+        var err = RTMPError()
+        defer {
+            PILI_RTMPError_Free(&err)
+        }
+        guard PILI_RTMP_Serve(rtmp, &err) > 0 else {
+            if let e = Error(error: err) {
+                throw e
+            }
+            return
+        }
+    }
+    
+    @objc public func enableWrite() {
+        PILI_RTMP_EnableWrite(rtmp)
     }
     
     deinit {
+        try? close()
         PILI_RTMP_Free(rtmp)
+    }
+}
+
+extension String {
+    var UTF8CString: UnsafeMutablePointer<Int8> {
+        var messageCString = utf8CString
+        return messageCString.withUnsafeMutableBytes { mesUMRBP in
+            return mesUMRBP.baseAddress!.bindMemory(to: Int8.self, capacity: mesUMRBP.count)
+        }
     }
 }
