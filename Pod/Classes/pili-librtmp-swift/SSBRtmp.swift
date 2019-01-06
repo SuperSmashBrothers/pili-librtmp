@@ -8,6 +8,11 @@
 
 import Foundation
 
+@objc public protocol SSBRtmpDelegate: NSObjectProtocol {
+    @objc optional func rtmp(_ rtmp: SSBRtmp, onError: Error?)
+    @objc optional func rtmp(_ rtmp: SSBRtmp, connectionTime: SSBRtmp.ConnectionTime?)
+}
+
 @objcMembers open class SSBRtmp: NSObject {
     
     public static var libVersion: Int32 {
@@ -30,6 +35,8 @@ import Foundation
     public static var maxHeaderSize: Int32 {
         return RTMP_MAX_HEADER_SIZE
     }
+    
+    public weak var delegate: SSBRtmpDelegate?
     
     public struct Feature: OptionSet {
         public let rawValue: Int32
@@ -174,8 +181,36 @@ import Foundation
         }
     }
     
-    public class AMFObject: NSObject {
+    @objcMembers public class AVaL: NSObject {
         
+        var aval = PILI_AVal()
+        
+        public var string: String {
+            get {
+                return String(cString: aval.av_val)
+            }
+            set {
+                aval.av_val = newValue.UTF8CString
+                aval.av_len = Int32(newValue.count)
+            }
+        }
+        
+        public init(_ string: String) {
+            super.init()
+            aval.av_val = string.UTF8CString
+            aval.av_len = Int32(string.count)
+        }
+    }
+    
+    @objcMembers public class ConnectionTime: NSObject {
+        public var connectTime: UInt32 = 0
+        public var handshakeTime: UInt32 = 0
+        
+        init(_ time: PILI_CONNECTION_TIME) {
+            super.init()
+            connectTime = time.connect_time
+            handshakeTime = time.handshake_time
+        }
     }
     
     @objcMembers public class Packet: NSObject {
@@ -318,19 +353,31 @@ import Foundation
         return PILI_RTMP_IsTimedout(rtmp) == 1
     }
     
+    private var _url: String?
     public var url: String? {
-        didSet {
-            if let url = self.url?.UTF8CString,
+        set {
+            if let url = newValue?.UTF8CString,
                 PILI_RTMP_SetupURL(rtmp, url, nil) > 0 {
-                self.url = nil
+                _url = newValue
             }
+        }
+        get {
+            return _url
         }
     }
     
-    public override init() {
+    public init(url: String? = nil) {
         super.init()
         // 调用初始化方法
         PILI_RTMP_Init(rtmp)
+        // 设置URL
+        self.url = url
+        // 设置回调c调用者
+        rtmp?.pointee.m_userData = UnsafeMutableRawPointer(mutating: bridge(obj: self))
+        // 设置链接时间回调
+        rtmp?.pointee.m_connCallback = ConnectionTimeCallback
+        // 设置错误处理回调
+        rtmp?.pointee.m_errorCallback = RTMPErrorCallback
     }
     
    public func close() throws {
@@ -352,7 +399,20 @@ import Foundation
         defer {
             PILI_RTMPError_Free(&err)
         }
-        guard PILI_RTMP_Connect(rtmp, packet?.packet, &err) > 0 else {
+        guard PILI_RTMP_Connect(rtmp, packet?.packet, &err) != 0 else {
+            if let e = Error(error: err) {
+                throw e
+            }
+            return
+        }
+    }
+    
+    public func send(packet: Packet, in queue: Int32 = 0) throws {
+        var err = RTMPError()
+        defer {
+            PILI_RTMPError_Free(&err)
+        }
+        guard PILI_RTMP_SendPacket(rtmp, packet.packet, queue, &err) != 0 else {
             if let e = Error(error: err) {
                 throw e
             }
@@ -365,7 +425,7 @@ import Foundation
         defer {
             PILI_RTMPError_Free(&err)
         }
-        guard PILI_RTMP_Pause(rtmp, doPause ? 1 : 0, &err) > 0 else {
+        guard PILI_RTMP_Pause(rtmp, doPause ? 1 : 0, &err) != 0 else {
             if let e = Error(error: err) {
                 throw e
             }
@@ -378,7 +438,7 @@ import Foundation
         defer {
             PILI_RTMPError_Free(&err)
         }
-        guard PILI_RTMP_ConnectStream(rtmp, Int32(seekTime), &err) > 0 else {
+        guard PILI_RTMP_ConnectStream(rtmp, Int32(seekTime), &err) != 0 else {
             if let e = Error(error: err) {
                 throw e
             }
@@ -391,7 +451,7 @@ import Foundation
         defer {
             PILI_RTMPError_Free(&err)
         }
-        guard PILI_RTMP_ReconnectStream(rtmp, Int32(seekTime), &err) > 0 else {
+        guard PILI_RTMP_ReconnectStream(rtmp, Int32(seekTime), &err) != 0 else {
             if let e = Error(error: err) {
                 throw e
             }
@@ -420,7 +480,7 @@ import Foundation
         defer {
             PILI_RTMPError_Free(&err)
         }
-        guard PILI_RTMP_Serve(rtmp, &err) > 0 else {
+        guard PILI_RTMP_Serve(rtmp, &err) != 0 else {
             if let e = Error(error: err) {
                 throw e
             }
@@ -434,8 +494,28 @@ import Foundation
     
     deinit {
         try? close()
-        PILI_RTMP_Free(rtmp)
+        rtmp = nil
     }
+}
+
+private func RTMPErrorCallback(error: UnsafeMutablePointer<RTMPError>?, userData: UnsafeMutableRawPointer?) {
+    guard let rtmp = userData?.assumingMemoryBound(to: SSBRtmp.self).pointee,
+        let delegate = rtmp.delegate else {
+        return
+    }
+    delegate.rtmp?(rtmp, onError: error?.pointee != nil ? SSBRtmp.Error(error: error!.pointee) : nil)
+}
+
+private func ConnectionTimeCallback(connTime: UnsafeMutablePointer<PILI_CONNECTION_TIME>?, userData: UnsafeMutableRawPointer?) {
+    guard let rtmp = userData?.assumingMemoryBound(to: SSBRtmp.self).pointee,
+        let delegate = rtmp.delegate else {
+            return
+    }
+    delegate.rtmp?(rtmp, connectionTime: connTime?.pointee != nil ? SSBRtmp.ConnectionTime(connTime!.pointee) : nil)
+}
+
+extension NSString {
+    
 }
 
 extension String {
@@ -445,4 +525,20 @@ extension String {
             return mesUMRBP.baseAddress!.bindMemory(to: Int8.self, capacity: mesUMRBP.count)
         }
     }
+}
+
+func bridge<T : AnyObject>(obj : T) -> UnsafeRawPointer {
+    return UnsafeRawPointer(Unmanaged.passUnretained(obj).toOpaque())
+}
+
+func bridge<T : AnyObject>(ptr : UnsafeRawPointer) -> T {
+    return Unmanaged<T>.fromOpaque(ptr).takeUnretainedValue()
+}
+
+func bridgeRetained<T : AnyObject>(obj : T) -> UnsafeRawPointer {
+    return UnsafeRawPointer(Unmanaged.passRetained(obj).toOpaque())
+}
+
+func bridgeTransfer<T : AnyObject>(ptr : UnsafeRawPointer) -> T {
+    return Unmanaged<T>.fromOpaque(ptr).takeRetainedValue()
 }

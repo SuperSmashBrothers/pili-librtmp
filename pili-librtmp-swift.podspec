@@ -14,11 +14,13 @@ Pod::Spec.new do |s|
   s.homepage         = "https://github.com/SuperSmashBrothers/pili-librtmp"
   s.license          = 'LGPL'
   s.author           = { "pili" => "jzh16s@hotmail.com" }
-  s.source           = { :path => "/Users/jiangzhenhua/pili-librtmp" }
+  s.source           = { :git => "https://github.com/SuperSmashBrothers/pili-librtmp.git", :tag => s.version.to_s }
 
   s.platform     = :ios, '8.0'
   s.requires_arc = true
-  s.source_files = "Pod/Classes/**/*.{h,c,swift}"
+  s.source_files = "Pod/Classes/**/*"
+  s.ios.deployment_target = '8.0'
+  s.swift_version = '4.0'
   s.exclude_files = "Pod/Classes/pili-librtmp/dh.h", "Pod/Classes/pili-librtmp/handshake.h"
   s.preserve_paths = "pili-librtmp-swift/module.module.map"
   s.module_map = "pili-librtmp-swift/module.modulemap"
