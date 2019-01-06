@@ -8,26 +8,26 @@
 
 import Foundation
 
-@objc open class SSBRtmp: NSObject {
+@objcMembers open class SSBRtmp: NSObject {
     
-    @objc public static var libVersion: Int32 {
+    public static var libVersion: Int32 {
         return RTMP_LIB_VERSION
     }
     
-    @objc public static var defaultChunkSize: Int32 {
+    public static var defaultChunkSize: Int32 {
         return RTMP_DEFAULT_CHUNKSIZE
     }
     
     /// needs to fit largest number of bytes recv() may return
-    @objc public static var bufferCacheSize: Int32 {
+    public static var bufferCacheSize: Int32 {
         return RTMP_BUFFER_CACHE_SIZE
     }
     
-    @objc public static var channels: Int32 {
+    public static var channels: Int32 {
         return RTMP_CHANNELS
     }
     
-    @objc public static var maxHeaderSize: Int32 {
+    public static var maxHeaderSize: Int32 {
         return RTMP_MAX_HEADER_SIZE
     }
     
@@ -178,7 +178,7 @@ import Foundation
         
     }
     
-    @objc public class Packet: NSObject {
+    @objcMembers public class Packet: NSObject {
         var packet: UnsafeMutablePointer<PILI_RTMPPacket>?
         
         public var isReady: Bool {
@@ -187,6 +187,7 @@ import Foundation
         
         @objc public enum HeaderType: Int32 {
             case unknown = -1, large, medium, small, minimum
+            
             public init(rawValue: Int32) {
                 switch rawValue {
                 case RTMP_PACKET_SIZE_LARGE: self = .large
@@ -198,7 +199,7 @@ import Foundation
             }
         }
         
-        @objc public var headerType: HeaderType {
+        public var headerType: HeaderType {
             set(newValue) {
                 packet?.pointee.m_headerType = UInt8(newValue.rawValue)
             }
@@ -210,7 +211,7 @@ import Foundation
             }
         }
         
-        @objc public enum PacketType: Int32 {
+        public enum PacketType: Int32 {
             case audio = 0x08, video
             case info = 0x12
             case unknown = -1
@@ -225,7 +226,7 @@ import Foundation
             }
         }
         
-        @objc public var type: PacketType {
+        public var type: PacketType {
             set(newValue) {
                 packet?.pointee.m_packetType = UInt8(type.rawValue)
             }
@@ -237,7 +238,7 @@ import Foundation
             }
         }
         
-        @objc public var data: Data? {
+        public var data: Data? {
             set(newValue) {
                 guard let d = newValue else {
                     packet?.pointee.m_body = nil
@@ -256,7 +257,7 @@ import Foundation
             }
         }
         
-        @objc public var timeStamp: Int {
+        public var timeStamp: Int {
             set(newValue) {
                 packet?.pointee.m_nTimeStamp = UInt32(newValue)
             }
@@ -265,7 +266,7 @@ import Foundation
             }
         }
         
-        @objc public var useExtTimestamp: Bool {
+        public var useExtTimestamp: Bool {
             set(newValue) {
                 packet?.pointee.m_useExtTimestamp = newValue ? 1 : 0
             }
@@ -275,7 +276,7 @@ import Foundation
         }
         
         /// timestamp absolute or relative
-        @objc public var hasAbsTimestamp: Bool {
+        public var hasAbsTimestamp: Bool {
             set(newValue) {
                 packet?.pointee.m_hasAbsTimestamp = newValue ? 1 : 0
             }
@@ -284,21 +285,21 @@ import Foundation
             }
         }
         
-        @objc public var size: Int {
+        public var size: Int {
             return Int(packet?.pointee.m_nBodySize ?? 0)
         }
         
-        @objc public override init() {
+        public override init() {
             super.init()
             PILI_RTMPPacket_Reset(packet)
             PILI_RTMPPacket_Alloc(packet, Int32(size))
         }
         
-        @objc public func reset() {
+        public func reset() {
             PILI_RTMPPacket_Reset(packet)
         }
         
-        @objc public func dump() {
+        public func dump() {
             PILI_RTMPPacket_Dump(packet)
         }
         
@@ -309,15 +310,15 @@ import Foundation
     
     var rtmp = PILI_RTMP_Alloc()
     
-    @objc public var isConnected: Bool {
+    public var isConnected: Bool {
         return PILI_RTMP_IsConnected(rtmp) == 1
     }
     
-    @objc public var isTimeout: Bool {
+    public var isTimeout: Bool {
         return PILI_RTMP_IsTimedout(rtmp) == 1
     }
     
-    @objc public var url: String? {
+    public var url: String? {
         didSet {
             if let url = self.url?.UTF8CString,
                 PILI_RTMP_SetupURL(rtmp, url, nil) > 0 {
@@ -332,7 +333,7 @@ import Foundation
         PILI_RTMP_Init(rtmp)
     }
     
-    @objc public func close() throws {
+   public func close() throws {
         guard let rtmp = self.rtmp else {
             return
         }
@@ -346,7 +347,7 @@ import Foundation
         }
     }
     
-    @objc public func connect(packet: Packet? = nil) throws {
+   public func connect(packet: Packet? = nil) throws {
         var err = RTMPError()
         defer {
             PILI_RTMPError_Free(&err)
@@ -359,7 +360,7 @@ import Foundation
         }
     }
     
-    @objc public func pause(doPause: Bool) throws {
+    public func pause(doPause: Bool) throws {
         var err = RTMPError()
         defer {
             PILI_RTMPError_Free(&err)
@@ -372,7 +373,7 @@ import Foundation
         }
     }
     
-    @objc public func connectStream(seekTime: Int) throws {
+    public func connectStream(seekTime: Int) throws {
         var err = RTMPError()
         defer {
             PILI_RTMPError_Free(&err)
@@ -385,7 +386,7 @@ import Foundation
         }
     }
     
-    @objc public func reconnectStream(seekTime: Int) throws {
+    public func reconnectStream(seekTime: Int) throws {
         var err = RTMPError()
         defer {
             PILI_RTMPError_Free(&err)
@@ -398,7 +399,7 @@ import Foundation
         }
     }
     
-    @objc public func deleteStream() throws {
+    public func deleteStream() throws {
         var err = RTMPError()
         defer {
             PILI_RTMPError_Free(&err)
@@ -410,11 +411,11 @@ import Foundation
     }
     
     @discardableResult
-    @objc public func read(packet: Packet) -> Int32 {
+    public func read(packet: Packet) -> Int32 {
         return Int32(PILI_RTMP_ReadPacket(rtmp, packet.packet))
     }
     
-    @objc public func serve() throws {
+    public func serve() throws {
         var err = RTMPError()
         defer {
             PILI_RTMPError_Free(&err)
@@ -427,7 +428,7 @@ import Foundation
         }
     }
     
-    @objc public func enableWrite() {
+    public func enableWrite() {
         PILI_RTMP_EnableWrite(rtmp)
     }
     

@@ -351,11 +351,11 @@ int PILI_RTMP_Write(PILI_RTMP *r, const char *buf, int size, RTMPError *error);
 #define MINOR 0
 #define PATCH 4
 
-int PILI_RTMP_Version();
+int PILI_RTMP_Version(void);
 
-const char * PILI_RTMP_GetReqId();
+const char * PILI_RTMP_GetReqId(void);
     
-const char * PILI_RTMP_GetRemoteIp();
+const char * PILI_RTMP_GetRemoteIp(void);
 
 
 /* hashswf.c */
